@@ -1,0 +1,35 @@
+[project]
+name = "cli-tool"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+authors = [
+    { name = "ghost", email = "blackbox.dev@tutamail.com" }
+]
+requires-python = ">=3.14"
+dependencies = [
+    "anthropic>=0.107.0",
+    "openai>=2.41.0",
+    "python-dotenv>=1.2.2",
+    "rich>=15.0.0",
+    "typer>=0.26.7",
+]
+
+[project.scripts]
+cli-tool = "cli_tool.main:app"
+
+[build-system]
+requires = ["uv_build>=0.11.19,<0.12.0"]
+build-backend = "uv_build"
+
+[tool.ruff]
+line-length = 100
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B"]
+
+[dependency-groups]
+dev = [
+    "pytest>=9.0.3",
+    "ruff>=0.15.16",
+]
