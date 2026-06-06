@@ -8,13 +8,13 @@ from cli_tool.core.errors import exit_with_error
 from cli_tool.core.files import save_text_file
 from cli_tool.core.json_output import load_json_model_with_repair, model_to_json_dict
 from cli_tool.core.output import print_json, print_panel, print_saved
+from cli_tool.core.structured_outputs import parse_structured_prompt
 from cli_tool.core.token_counter import count_prompt_tokens, require_sendable
 from cli_tool.prompts.workflows import (
     build_json_repair_prompt,
     build_research_json_prompt,
 )
-from cli_tool.providers.openai_client import run_openai_web_research
-from cli_tool.schemas.research import ResearchJson
+from cli_tool.schemas.research import ResearchJson, ResearchOutput
 
 
 def research(
@@ -72,7 +72,16 @@ def run_research(
 ) -> tuple[str, bool, str | None]:
     if provider == providers.Provider.OPENAI and not no_web:
         try:
-            return run_openai_web_research(query, model=model), True, None
+            prompt = build_research_json_prompt(query, used_live_web=True)
+            parsed = parse_structured_prompt(
+                prompt.instructions,
+                prompt.input,
+                ResearchOutput,
+                model=model,
+                task=prompt.task,
+                tools=[{"type": "web_search_preview"}],
+            )
+            return parsed.model_dump_json(), True, None
         except Exception as error:
             fallback_warning = f"Live web search failed; using model-only fallback: {error}"
             return run_model_only_research(query, provider, model), False, fallback_warning

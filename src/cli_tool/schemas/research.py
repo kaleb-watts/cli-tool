@@ -3,26 +3,25 @@ from typing import Literal
 from pydantic import BaseModel, ConfigDict
 
 
-class ResearchFinding(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-
-    claim: str
-    source_title: str
-    source_url: str
-    source_date: str | None = None
-    confidence: Literal["low", "medium", "high"]
-
-
 class ResearchSource(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     title: str
-    url: str
-    publisher: str | None = None
-    date: str | None = None
+    url: str | None
+    publisher: str | None
+    date: str | None
 
 
-class ResearchJson(BaseModel):
+class ResearchFinding(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    claim: str
+    source_title: str | None
+    source_url: str | None
+    confidence: Literal["low", "medium", "high"]
+
+
+class ResearchOutput(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     query: str
@@ -32,3 +31,6 @@ class ResearchJson(BaseModel):
     sources: list[ResearchSource]
     follow_up_queries: list[str]
     limitations: list[str]
+
+
+ResearchJson = ResearchOutput

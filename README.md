@@ -2,14 +2,14 @@
 
 A terminal-native AI workflow CLI for builders, developers, and students. It turns rough notes, code, local files, and repo context into useful artifacts without becoming a generic chatbot wrapper.
 
-The OpenAI provider uses the OpenAI Responses API through one shared client helper, and commands keep prompt instructions separate from dynamic user input where the workflow needs structured prompting.
+The OpenAI provider uses the OpenAI Responses API through one shared client helper, and commands keep prompt instructions separate from dynamic user input where the workflow needs structured prompting. OpenAI-backed JSON workflows use Structured Outputs with `client.responses.parse(..., text_format=<PydanticModel>)` so command output follows real data contracts instead of prompt-only JSON requests.
 
 ## What It Does
 
 - Draft emails from rough notes
 - Review code files
 - Summarize meetings
-- Return structured JSON for meeting summaries and code reviews
+- Return schema-validated JSON for automation and `jq`
 - Ask grounded questions about local files
 - Analyze CSV, log, and text files locally
 - Research topics with live OpenAI web search and explicit fallback labeling
@@ -55,6 +55,21 @@ Run the CLI:
 uv run cli-tool --help
 ```
 
+## Environment Variables
+
+- `OPENAI_API_KEY`: Required for OpenAI-backed commands, live web research, Structured Outputs, and token counting.
+- `ANTHROPIC_API_KEY`: Required when using `--provider anthropic`.
+- `OPENAI_MODEL`: Optional default OpenAI model override.
+- `ANTHROPIC_MODEL`: Optional default Anthropic model override.
+
+Example:
+
+```bash
+export OPENAI_API_KEY="your_key_here"
+```
+
+Never commit `.env`, API keys, shell history with secrets, local caches, virtual environments, or generated session files.
+
 ## Commands
 
 Show help:
@@ -88,6 +103,7 @@ Ask a grounded question about a file:
 ```bash
 uv run cli-tool ask-file README.md "What is missing?"
 uv run cli-tool ask-file src/cli_tool/main.py "How can this be cleaner?"
+uv run cli-tool ask-file README.md "List the setup steps" --json
 ```
 
 Analyze files locally:
@@ -161,6 +177,8 @@ Save AI output:
 uv run cli-tool meeting notes.txt --save summary.md
 ```
 
+Commands that currently support `--json`: `review`, `meeting`, `ask-file`, `analyze`, `repo-review`, `research`, `tokens`, and `tokens-chat`.
+
 ## Research
 
 `research` returns a summary, key findings, cited sources, follow-up queries, and limitations. In JSON mode the output includes:
@@ -175,7 +193,6 @@ uv run cli-tool meeting notes.txt --save summary.md
       "claim": "A sourced claim.",
       "source_title": "Source title",
       "source_url": "https://example.com",
-      "source_date": null,
       "confidence": "high"
     }
   ],
@@ -196,13 +213,20 @@ uv run cli-tool meeting notes.txt --save summary.md
 
 ## Structured JSON Output
 
-JSON mode prints valid JSON only, without Rich panels or markdown fences, so it can be piped into tools like `jq`:
+JSON mode prints JSON only, without Rich panels or markdown fences, so it can be piped into tools like `jq`:
 
 ```bash
 uv run cli-tool meeting notes.txt --json | jq .
 uv run cli-tool review app.py --json | jq '.issues'
+uv run cli-tool research "current uv packaging guidance" --json | jq '.sources[].url'
 uv run cli-tool tokens README.md --json | jq .
 ```
+
+For OpenAI-backed model-generated JSON commands, the CLI uses OpenAI Structured Outputs via `client.responses.parse` and reads `response.output_parsed`. The schema is passed as a Pydantic model through `text_format`, which keeps Python types and JSON output fields aligned.
+
+For Anthropic or fallback model-only paths, the CLI validates raw JSON against the same Pydantic schemas and makes one repair attempt. If validation still fails, the command exits nonzero with a clear error instead of printing malformed or schema-invalid JSON.
+
+Schemas forbid extra keys, use `Literal` values for fields such as `severity`, `priority`, `confidence`, and token `risk_level`, and keep optional values present as `null` rather than omitting fields. If the model refuses or the structured response is empty, the CLI reports a clean command error instead of a traceback.
 
 Example meeting JSON:
 
@@ -217,13 +241,25 @@ Example meeting JSON:
       "due_date": null,
       "priority": "high"
     }
-  ]
+  ],
+  "warnings": []
 }
 ```
 
-If the model returns invalid JSON, the CLI exits with a clear error instead of printing malformed data as if it worked.
+Example review issue JSON:
 
-JSON outputs are validated with Pydantic schemas for supported JSON commands: `meeting`, `review`, `ask-file`, `analyze`, `repo-review`, `research`, `tokens`, and `tokens-chat`. Model-generated JSON gets one repair attempt if it is malformed or fails schema validation; if repair fails, the CLI exits nonzero instead of printing invalid JSON.
+```json
+{
+  "severity": "high",
+  "file": "src/app.py",
+  "line": 42,
+  "title": "Unhandled missing configuration",
+  "explanation": "The command assumes the variable is always present.",
+  "suggested_fix": "Validate the configuration before using it and return a clean CLI error."
+}
+```
+
+Structured schemas are available for `meeting`, `review`, `ask-file`, `analyze`, `repo-review`, `research`, `tokens`, and `tokens-chat`.
 
 ## Large File Handling
 

@@ -1,18 +1,26 @@
-from typing import Any
+from typing import Literal
 
 from pydantic import BaseModel, ConfigDict
 
 
-class RepoReviewJson(BaseModel):
+class RepoFix(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    repo: str
-    what_is_working: list[str]
-    what_is_broken: list[str]
-    highest_priority_fixes: list[str]
+    priority: Literal["low", "medium", "high"]
+    title: str
+    reason: str
+    files_to_edit: list[str]
+
+
+class RepoReviewOutput(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    summary: str
+    working: list[str]
+    broken_or_risky: list[str]
+    highest_priority_fixes: list[RepoFix]
     next_3_commits: list[str]
-    specific_files_to_edit: list[str]
-    command_outputs: dict[str, str]
-    git_status: str
-    git_diff_stat: str
-    token_check: dict[str, Any] | None = None
+    warnings: list[str]
+
+
+RepoReviewJson = RepoReviewOutput

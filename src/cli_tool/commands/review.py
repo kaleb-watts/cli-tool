@@ -8,9 +8,10 @@ from cli_tool.core.errors import exit_with_error
 from cli_tool.core.files import read_text_file, save_text_file
 from cli_tool.core.json_output import load_json_model_with_repair, model_to_json_dict
 from cli_tool.core.output import print_json, print_panel, print_saved
+from cli_tool.core.structured_outputs import parse_structured_prompt
 from cli_tool.core.token_counter import count_prompt_tokens, require_sendable
 from cli_tool.prompts.workflows import build_code_review_json_prompt, build_json_repair_prompt
-from cli_tool.schemas.review import CodeReview
+from cli_tool.schemas.review import CodeReviewOutput
 from cli_tool.templates.code_review import build_code_review_prompt
 
 
@@ -30,31 +31,37 @@ def review(
     """Review a code file."""
     try:
         code = read_text_file(file)
-        prompt = (
-            build_code_review_json_prompt(code, file)
-            if json_output
-            else build_code_review_prompt(code, file)
-        )
-        if json_output and provider == providers.Provider.OPENAI:
-            require_sendable(count_prompt_tokens(prompt, model=model))
-        result = providers.generate_text(prompt, provider, model=model)
-
         if json_output:
-            validated = load_json_model_with_repair(
-                result,
-                CodeReview,
-                lambda error: providers.generate_text(
-                    build_json_repair_prompt(result, error, "CodeReview"),
-                    provider,
+            json_prompt = build_code_review_json_prompt(code, file)
+            if provider == providers.Provider.OPENAI:
+                require_sendable(count_prompt_tokens(json_prompt, model=model))
+            if provider == providers.Provider.OPENAI:
+                validated = parse_structured_prompt(
+                    json_prompt.instructions,
+                    json_prompt.input,
+                    CodeReviewOutput,
                     model=model,
-                ),
-            )
+                    task=json_prompt.task,
+                )
+            else:
+                result = providers.generate_text(json_prompt, provider, model=model)
+                validated = load_json_model_with_repair(
+                    result,
+                    CodeReviewOutput,
+                    lambda error: providers.generate_text(
+                        build_json_repair_prompt(result, error, "CodeReviewOutput"),
+                        provider,
+                        model=model,
+                    ),
+                )
             data = model_to_json_dict(validated)
             print_json(data)
             if save:
                 save_text_file(save, json.dumps(data, indent=2))
             return
 
+        text_prompt = build_code_review_prompt(code, file)
+        result = providers.generate_text(text_prompt, provider, model=model)
         print_panel(result)
         if save:
             save_text_file(save, result)

@@ -98,7 +98,7 @@ def test_invalid_json_triggers_repair():
     result = load_json_model_with_repair(
         '{"issues": [{"severity": "nonsense"}]}',
         CodeReview,
-        lambda _error: '{"issues": []}',
+        lambda _error: '{"summary": "Fixed.", "issues": [], "next_steps": [], "warnings": []}',
     )
 
     assert result.issues == []

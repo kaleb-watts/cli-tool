@@ -10,7 +10,7 @@ from cli_tool.core.sessions import DEFAULT_SESSION_PATH, load_session
 from cli_tool.core.token_counter import count_prompt_tokens, token_report_with_source
 from cli_tool.core.token_policy import format_token_policy
 from cli_tool.prompts.workflows import build_chat_prompt
-from cli_tool.schemas.tokens import TokenReport
+from cli_tool.schemas.tokens import TokenReportOutput
 
 
 def tokens_chat(
@@ -32,7 +32,7 @@ def tokens_chat(
         result = count_prompt_tokens(prompt, model=model)
         if json_output:
             validated = validate_json_model(
-                token_report_with_source(result, "chat", str(session_path)), TokenReport
+                token_report_with_source(result, "chat", str(session_path)), TokenReportOutput
             )
             print_json(model_to_json_dict(validated))
             return

@@ -1,6 +1,7 @@
 from typing import Any
 
 from openai import OpenAI
+from pydantic import BaseModel
 
 from cli_tool.core.config import get_openai_api_key, get_openai_model
 from cli_tool.core.models import ModelTask, choose_openai_model
@@ -21,6 +22,50 @@ def ask_model(
     )
 
     return response.output_text
+
+
+def parse_structured_response[T: BaseModel](
+    model: str,
+    instructions: str,
+    input_text: str,
+    schema: type[T],
+    tools: Any = None,
+) -> T | None:
+    client = OpenAI(api_key=get_openai_api_key())
+
+    response = client.responses.parse(
+        model=model,
+        instructions=instructions,
+        input=input_text,
+        text_format=schema,
+        tools=tools,
+    )
+
+    refusal = extract_refusal(response)
+    if refusal:
+        raise RuntimeError(f"Model refused structured output: {refusal}")
+
+    parsed = getattr(response, "output_parsed", None)
+    if parsed is None:
+        return None
+
+    return schema.model_validate(parsed)
+
+
+def extract_refusal(response: Any) -> str | None:
+    refusal = getattr(response, "refusal", None)
+    if refusal:
+        return str(refusal)
+
+    for output_item in getattr(response, "output", []) or []:
+        for content_item in getattr(output_item, "content", []) or []:
+            refusal = getattr(content_item, "refusal", None)
+            if refusal:
+                return str(refusal)
+            if getattr(content_item, "type", None) == "refusal":
+                return str(getattr(content_item, "text", "Model refused the request."))
+
+    return None
 
 
 def count_input_tokens(

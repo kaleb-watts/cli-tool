@@ -10,6 +10,9 @@ from cli_tool.commands import review as review_command
 from cli_tool.commands import tokens as tokens_command
 from cli_tool.commands import tokens_chat as tokens_chat_command
 from cli_tool.core.token_policy import TokenPolicyResult, TokenRiskLevel
+from cli_tool.schemas.meeting import MeetingSummaryOutput
+from cli_tool.schemas.research import ResearchOutput
+from cli_tool.schemas.review import CodeReviewOutput
 from cli_tool.templates.code_review import build_code_review_prompt
 from cli_tool.templates.email import build_email_prompt
 from cli_tool.templates.meeting import build_meeting_prompt
@@ -134,40 +137,29 @@ def test_meeting_reads_file_and_builds_grounded_prompt(monkeypatch, tmp_path):
 def test_meeting_json_outputs_parseable_json(monkeypatch, tmp_path):
     notes = tmp_path / "notes.txt"
     notes.write_text("Ship Friday.", encoding="utf-8")
+    payload = meeting_payload()
     monkeypatch.setattr(
-        providers,
-        "generate_text",
-        lambda _prompt, _provider, model=None: json.dumps(
-            {
-                "summary": "Ship Friday.",
-                "decisions": ["Ship Friday"],
-                "action_items": [],
-            }
-        ),
+        meeting_command,
+        "parse_structured_prompt",
+        lambda *_args, **_kwargs: MeetingSummaryOutput.model_validate(payload),
     )
     monkeypatch.setattr(meeting_command, "count_prompt_tokens", fake_safe_token_count)
 
     result = runner.invoke(main.app, ["meeting", str(notes), "--json"])
 
     assert result.exit_code == 0
-    assert json.loads(result.output) == {
-        "summary": "Ship Friday.",
-        "decisions": ["Ship Friday"],
-        "action_items": [],
-    }
+    assert json.loads(result.output) == payload
 
 
 def test_meeting_json_save_still_prints_json_only(monkeypatch, tmp_path):
     notes = tmp_path / "notes.txt"
     notes.write_text("Ship Friday.", encoding="utf-8")
     target = tmp_path / "summary.json"
-    payload = {
-        "summary": "Ship Friday.",
-        "decisions": ["Ship Friday"],
-        "action_items": [],
-    }
+    payload = meeting_payload()
     monkeypatch.setattr(
-        providers, "generate_text", lambda _prompt, _provider, model=None: json.dumps(payload)
+        meeting_command,
+        "parse_structured_prompt",
+        lambda *_args, **_kwargs: MeetingSummaryOutput.model_validate(payload),
     )
     monkeypatch.setattr(meeting_command, "count_prompt_tokens", fake_safe_token_count)
 
@@ -182,14 +174,28 @@ def test_review_json_outputs_parseable_json(monkeypatch, tmp_path):
     source = tmp_path / "app.py"
     source.write_text("print('hello')", encoding="utf-8")
     monkeypatch.setattr(
-        providers, "generate_text", lambda _prompt, _provider, model=None: '{"issues": []}'
+        review_command,
+        "parse_structured_prompt",
+        lambda *_args, **_kwargs: CodeReviewOutput.model_validate(
+            {
+                "summary": "No issues found.",
+                "issues": [],
+                "next_steps": [],
+                "warnings": [],
+            }
+        ),
     )
     monkeypatch.setattr(review_command, "count_prompt_tokens", fake_safe_token_count)
 
     result = runner.invoke(main.app, ["review", str(source), "--json"])
 
     assert result.exit_code == 0
-    assert json.loads(result.output) == {"issues": []}
+    assert json.loads(result.output) == {
+        "summary": "No issues found.",
+        "issues": [],
+        "next_steps": [],
+        "warnings": [],
+    }
 
 
 def test_ask_file_builds_grounded_prompt(monkeypatch, tmp_path):
@@ -281,8 +287,10 @@ def test_ask_file_large_file_uses_retrieved_chunks(monkeypatch, tmp_path):
 def test_research_json_uses_live_web_when_available(monkeypatch):
     monkeypatch.setattr(
         research_command,
-        "run_openai_web_research",
-        lambda query, model=None: json.dumps(research_payload(query, used_live_web=True)),
+        "parse_structured_prompt",
+        lambda *_args, **_kwargs: ResearchOutput.model_validate(
+            research_payload("python packaging", used_live_web=True)
+        ),
     )
 
     result = runner.invoke(main.app, ["research", "python packaging", "--json"])
@@ -294,10 +302,10 @@ def test_research_json_uses_live_web_when_available(monkeypatch):
 
 
 def test_research_json_falls_back_when_web_unavailable(monkeypatch):
-    def fail_web(_query, model=None):
+    def fail_web(*_args, **_kwargs):
         raise RuntimeError("web unavailable")
 
-    monkeypatch.setattr(research_command, "run_openai_web_research", fail_web)
+    monkeypatch.setattr(research_command, "parse_structured_prompt", fail_web)
     monkeypatch.setattr(
         providers,
         "generate_text",
@@ -363,9 +371,9 @@ def test_analyze_csv_json_is_parseable(tmp_path):
 
     assert result.exit_code == 0
     payload = json.loads(result.output)
-    assert payload["type"] == "csv"
-    assert payload["row_count"] == 2
-    assert payload["missing_values"]["score"] == 1
+    assert payload["file_type"] == "csv"
+    assert "2 rows" in payload["findings"][0]["explanation"]
+    assert "score" in payload["recommended_actions"][0]
 
 
 def test_missing_file_exits_cleanly_without_traceback():
@@ -420,7 +428,6 @@ def research_payload(query: str, used_live_web: bool) -> dict:
                 "claim": "A verified claim.",
                 "source_title": "Example",
                 "source_url": "https://example.com",
-                "source_date": None,
                 "confidence": "high",
             }
         ],
@@ -434,4 +441,13 @@ def research_payload(query: str, used_live_web: bool) -> dict:
         ],
         "follow_up_queries": ["next query"],
         "limitations": [],
+    }
+
+
+def meeting_payload() -> dict:
+    return {
+        "summary": "Ship Friday.",
+        "decisions": ["Ship Friday"],
+        "action_items": [],
+        "warnings": [],
     }

@@ -10,7 +10,7 @@ from cli_tool.core.output import print_json, print_panel
 from cli_tool.core.token_counter import count_prompt_tokens, token_report_with_source
 from cli_tool.core.token_policy import format_token_policy
 from cli_tool.prompts.workflows import build_ask_file_prompt
-from cli_tool.schemas.tokens import TokenReport
+from cli_tool.schemas.tokens import TokenReportOutput
 
 
 def tokens(
@@ -35,7 +35,7 @@ def tokens(
         result = count_prompt_tokens(prompt, model=model)
         if json_output:
             validated = validate_json_model(
-                token_report_with_source(result, "file", file), TokenReport
+                token_report_with_source(result, "file", file), TokenReportOutput
             )
             print_json(model_to_json_dict(validated))
             return

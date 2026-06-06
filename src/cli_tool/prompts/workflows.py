@@ -12,26 +12,11 @@ def build_meeting_json_prompt(notes: str) -> Prompt:
 You are an executive assistant.
 
 # Instructions
-Summarize the meeting notes as valid JSON only.
-
-# Output Format
-Return this exact object shape:
-{
-  "summary": "string",
-  "decisions": ["string"],
-  "action_items": [
-    {
-      "task": "string",
-      "owner": null,
-      "due_date": null,
-      "priority": "low|medium|high"
-    }
-  ]
-}
+Summarize the meeting notes according to the provided schema.
 
 # Rules
-- Do not wrap the JSON in markdown.
 - Use null when owner or due_date is unknown.
+- Use an empty warnings list when there are no concerns.
 - Do not invent facts.
 """.strip()
 
@@ -45,31 +30,17 @@ Return this exact object shape:
 
 def build_code_review_json_prompt(code: str, filename: str) -> Prompt:
     escaped_filename = escape(filename, quote=True)
-    instructions = f"""
+    instructions = """
 # Identity
 You are a senior software engineer.
 
 # Instructions
-Review the file and return valid JSON only.
-
-# Output Format
-Return this exact object shape:
-{{
-  "issues": [
-    {{
-      "severity": "critical|warning|suggestion",
-      "file": "{escaped_filename}",
-      "line": null,
-      "explanation": "string",
-      "suggested_fix": "string"
-    }}
-  ]
-}}
+Review the file according to the provided schema.
 
 # Rules
-- Do not wrap the JSON in markdown.
 - If the file looks good, return an empty issues array.
 - Use null for line when the line number is unknown.
+- Do not invent line numbers, files, or evidence.
 """.strip()
 
     input_text = f"""
@@ -124,9 +95,8 @@ used_live_web must be {str(used_live_web).lower()}.
   "key_findings": [
     {{
       "claim": "string",
-      "source_title": "string",
-      "source_url": "string",
-      "source_date": null,
+      "source_title": null,
+      "source_url": null,
       "confidence": "low|medium|high"
     }}
   ],

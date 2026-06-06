@@ -1,7 +1,10 @@
 from types import SimpleNamespace
 
+import pytest
+
 from cli_tool.core.models import ModelTask
 from cli_tool.providers import anthropic_client, openai_client
+from cli_tool.schemas.meeting import MeetingSummaryOutput
 
 
 def test_run_openai_uses_responses_api_and_returns_output_text(monkeypatch):
@@ -109,6 +112,79 @@ def test_count_input_tokens_uses_official_endpoint(monkeypatch):
             "tools": [{"type": "web_search_preview"}],
         }
     ]
+
+
+def test_parse_structured_response_uses_responses_parse(monkeypatch):
+    calls = []
+
+    class FakeResponses:
+        def parse(self, **kwargs):
+            calls.append(kwargs)
+            return SimpleNamespace(
+                output_parsed={
+                    "summary": "Done.",
+                    "decisions": ["Ship it."],
+                    "action_items": [
+                        {
+                            "task": "Update docs.",
+                            "owner": None,
+                            "due_date": None,
+                            "priority": "medium",
+                        }
+                    ],
+                    "warnings": [],
+                }
+            )
+
+    class FakeOpenAI:
+        def __init__(self, api_key: str):
+            self.api_key = api_key
+            self.responses = FakeResponses()
+
+    monkeypatch.setattr(openai_client, "OpenAI", FakeOpenAI)
+    monkeypatch.setattr(openai_client, "get_openai_api_key", lambda: "test-openai-key")
+
+    result = openai_client.parse_structured_response(
+        model="test-model",
+        instructions="Return a meeting summary.",
+        input_text="<meeting>notes</meeting>",
+        schema=MeetingSummaryOutput,
+        tools=[{"type": "web_search_preview"}],
+    )
+
+    assert isinstance(result, MeetingSummaryOutput)
+    assert result.summary == "Done."
+    assert calls == [
+        {
+            "model": "test-model",
+            "instructions": "Return a meeting summary.",
+            "input": "<meeting>notes</meeting>",
+            "text_format": MeetingSummaryOutput,
+            "tools": [{"type": "web_search_preview"}],
+        }
+    ]
+
+
+def test_parse_structured_response_raises_on_refusal(monkeypatch):
+    class FakeResponses:
+        def parse(self, **_kwargs):
+            return SimpleNamespace(refusal="Cannot comply.", output_parsed=None)
+
+    class FakeOpenAI:
+        def __init__(self, api_key: str):
+            self.api_key = api_key
+            self.responses = FakeResponses()
+
+    monkeypatch.setattr(openai_client, "OpenAI", FakeOpenAI)
+    monkeypatch.setattr(openai_client, "get_openai_api_key", lambda: "test-openai-key")
+
+    with pytest.raises(RuntimeError, match="Model refused structured output"):
+        openai_client.parse_structured_response(
+            model="test-model",
+            instructions="Return a meeting summary.",
+            input_text="<meeting>notes</meeting>",
+            schema=MeetingSummaryOutput,
+        )
 
 
 def test_run_anthropic_uses_messages_api_and_joins_text_blocks(monkeypatch):

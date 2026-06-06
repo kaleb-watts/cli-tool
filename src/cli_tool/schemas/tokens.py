@@ -7,7 +7,7 @@ class TokenSource(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     type: Literal["file", "chat", "repo", "raw"]
-    path: str | None = None
+    path: str | None
 
 
 class TokenReport(BaseModel):
@@ -19,3 +19,6 @@ class TokenReport(BaseModel):
     should_send: bool
     recommendation: str
     source: TokenSource
+
+
+TokenReportOutput = TokenReport

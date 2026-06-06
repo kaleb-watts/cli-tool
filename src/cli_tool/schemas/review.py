@@ -3,17 +3,24 @@ from typing import Literal
 from pydantic import BaseModel, ConfigDict
 
 
-class ReviewIssue(BaseModel):
+class CodeIssue(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    severity: Literal["critical", "warning", "suggestion"]
+    severity: Literal["low", "medium", "high", "critical"]
     file: str | None
-    line: int | None = None
+    line: int | None
+    title: str
     explanation: str
     suggested_fix: str
 
 
-class CodeReview(BaseModel):
+class CodeReviewOutput(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    issues: list[ReviewIssue]
+    summary: str
+    issues: list[CodeIssue]
+    next_steps: list[str]
+    warnings: list[str]
+
+
+CodeReview = CodeReviewOutput
