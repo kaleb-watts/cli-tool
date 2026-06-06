@@ -1,6 +1,7 @@
 from pathlib import Path
 
 type PathInput = str | Path
+MAX_FILE_CHARS = 20_000
 
 
 def read_text_file(path: PathInput) -> str:
@@ -21,3 +22,11 @@ def save_text_file(path: PathInput, content: str) -> None:
     file_path.parent.mkdir(parents=True, exist_ok=True)
 
     file_path.write_text(content, encoding="utf-8")
+
+
+def read_text_preview(path: PathInput, max_chars: int = MAX_FILE_CHARS) -> tuple[str, bool]:
+    content = read_text_file(path)
+    if len(content) <= max_chars:
+        return content, False
+
+    return content[:max_chars], True

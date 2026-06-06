@@ -24,5 +24,20 @@ uv run cli-tool review "{{file}}"
 meeting file:
 uv run cli-tool meeting "{{file}}"
 
+research query:
+uv run cli-tool research "{{query}}"
+
+ask file question:
+uv run cli-tool ask-file "{{file}}" "{{question}}"
+
+analyze file:
+uv run cli-tool analyze "{{file}}"
+
+repo-review:
+uv run cli-tool repo-review
+
+chat:
+uv run cli-tool chat
+
 tree:
-tree -I ".venv|pycache|.git|.pytest_cache|.ruff_cache"
+tree -I ".venv|pycache|.git|.pytest_cache|.ruff_cache|.cli_tool"
