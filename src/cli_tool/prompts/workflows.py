@@ -106,6 +106,51 @@ Return:
     return Prompt(instructions=instructions, input=input_text, task=ModelTask.STRONG)
 
 
+def build_research_json_prompt(query: str, used_live_web: bool = False) -> Prompt:
+    instructions = f"""
+# Identity
+You are a technical research assistant for builders and students.
+
+# Instructions
+Return valid JSON only.
+Do not claim live verification unless used_live_web is true.
+used_live_web must be {str(used_live_web).lower()}.
+
+# Output Format
+{{
+  "query": "string",
+  "used_live_web": {str(used_live_web).lower()},
+  "summary": "string",
+  "key_findings": [
+    {{
+      "claim": "string",
+      "source_title": "string",
+      "source_url": "string",
+      "source_date": null,
+      "confidence": "low|medium|high"
+    }}
+  ],
+  "sources": [
+    {{
+      "title": "string",
+      "url": "string",
+      "publisher": null,
+      "date": null
+    }}
+  ],
+  "follow_up_queries": ["string"],
+  "limitations": ["string"]
+}}
+""".strip()
+
+    input_text = f"""
+<query>
+{query}
+</query>
+""".strip()
+    return Prompt(instructions=instructions, input=input_text, task=ModelTask.STRONG)
+
+
 def build_ask_file_prompt(
     file_path: str, file_contents: str, user_question: str, truncated: bool
 ) -> Prompt:
@@ -157,5 +202,29 @@ Be practical, concise, and terminal-friendly.
 <user_message>
 {user_message}
 </user_message>
+""".strip()
+    return Prompt(instructions=instructions, input=input_text, task=ModelTask.FAST)
+
+
+def build_json_repair_prompt(raw_output: str, validation_error: str, schema_name: str) -> Prompt:
+    instructions = f"""
+# Identity
+You repair JSON for a CLI command.
+
+# Instructions
+Return valid JSON only.
+Repair the output so it conforms to the {schema_name} schema.
+Do not add markdown fences, comments, or prose.
+Preserve the original meaning when possible.
+""".strip()
+
+    input_text = f"""
+<validation_error>
+{validation_error}
+</validation_error>
+
+<raw_output>
+{raw_output}
+</raw_output>
 """.strip()
     return Prompt(instructions=instructions, input=input_text, task=ModelTask.FAST)

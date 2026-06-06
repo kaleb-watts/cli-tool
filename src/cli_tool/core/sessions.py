@@ -6,6 +6,7 @@ from typing import Any
 
 DEFAULT_SESSION_PATH = Path(".cli_tool/sessions/default.json")
 MAX_HISTORY_MESSAGES = 20
+RECENT_MESSAGES_TO_KEEP = 8
 
 
 @dataclass
@@ -38,3 +39,23 @@ def save_session(session: ChatSession, path: Path = DEFAULT_SESSION_PATH) -> Non
 
 def append_message(session: ChatSession, role: str, content: str) -> None:
     session.messages.append({"role": role, "content": content})
+
+
+def compact_session(session: ChatSession) -> bool:
+    if len(session.messages) <= RECENT_MESSAGES_TO_KEEP:
+        return False
+
+    older_messages = session.messages[:-RECENT_MESSAGES_TO_KEEP]
+    recent_messages = session.messages[-RECENT_MESSAGES_TO_KEEP:]
+    summary_parts = [
+        f"{message.get('role', 'unknown')}: {message.get('content', '')[:240]}"
+        for message in older_messages
+    ]
+    session.messages = [
+        {
+            "role": "system",
+            "content": "Compact summary of older chat turns:\n" + "\n".join(summary_parts),
+        },
+        *recent_messages,
+    ]
+    return True

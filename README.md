@@ -12,9 +12,10 @@ The OpenAI provider uses the OpenAI Responses API through one shared client help
 - Return structured JSON for meeting summaries and code reviews
 - Ask grounded questions about local files
 - Analyze CSV, log, and text files locally
-- Research topics with a clear non-live-web disclaimer
+- Research topics with live OpenAI web search and explicit fallback labeling
 - Review a repo using only safe allowlisted commands
 - Run an interactive chat mode with local session history
+- Count OpenAI input tokens before sending large prompts
 
 ## Installation
 
@@ -97,13 +98,31 @@ uv run cli-tool analyze app.log --json
 uv run cli-tool analyze notes.txt
 ```
 
+Count tokens before sending a file to AI:
+
+```bash
+uv run cli-tool tokens README.md
+uv run cli-tool tokens src/cli_tool/main.py --model gpt-4.1
+uv run cli-tool tokens app.log --json
+```
+
+Count the saved chat session:
+
+```bash
+uv run cli-tool tokens-chat
+uv run cli-tool tokens-chat --session default
+uv run cli-tool tokens-chat --json
+```
+
 Research a topic:
 
 ```bash
 uv run cli-tool research "best Python CLI packaging practices with uv"
+uv run cli-tool research "best Python CLI packaging practices with uv" --json
+uv run cli-tool research "best Python CLI packaging practices with uv" --no-web
 ```
 
-This version does not perform live web search. Research output is model-generated unless a future provider integration adds web search.
+OpenAI research uses the Responses API web search tool by default. If web search fails or `--no-web` is passed, the output is clearly labeled as model-only fallback and `used_live_web` is `false`.
 
 Review the current repo safely:
 
@@ -142,13 +161,47 @@ Save AI output:
 uv run cli-tool meeting notes.txt --save summary.md
 ```
 
-## JSON Output
+## Research
+
+`research` returns a summary, key findings, cited sources, follow-up queries, and limitations. In JSON mode the output includes:
+
+```json
+{
+  "query": "best Python CLI packaging practices with uv",
+  "used_live_web": true,
+  "summary": "Short verified summary.",
+  "key_findings": [
+    {
+      "claim": "A sourced claim.",
+      "source_title": "Source title",
+      "source_url": "https://example.com",
+      "source_date": null,
+      "confidence": "high"
+    }
+  ],
+  "sources": [
+    {
+      "title": "Source title",
+      "url": "https://example.com",
+      "publisher": "Example",
+      "date": null
+    }
+  ],
+  "follow_up_queries": ["specific follow-up query"],
+  "limitations": []
+}
+```
+
+`used_live_web` is only `true` when live web search was actually used. Fallback output includes a limitation explaining why the answer is not web-verified.
+
+## Structured JSON Output
 
 JSON mode prints valid JSON only, without Rich panels or markdown fences, so it can be piped into tools like `jq`:
 
 ```bash
 uv run cli-tool meeting notes.txt --json | jq .
 uv run cli-tool review app.py --json | jq '.issues'
+uv run cli-tool tokens README.md --json | jq .
 ```
 
 Example meeting JSON:
@@ -170,20 +223,71 @@ Example meeting JSON:
 
 If the model returns invalid JSON, the CLI exits with a clear error instead of printing malformed data as if it worked.
 
+JSON outputs are validated with Pydantic schemas for supported JSON commands: `meeting`, `review`, `ask-file`, `analyze`, `repo-review`, `research`, `tokens`, and `tokens-chat`. Model-generated JSON gets one repair attempt if it is malformed or fails schema validation; if repair fails, the CLI exits nonzero instead of printing invalid JSON.
+
+## Large File Handling
+
+Large `ask-file` inputs use chunking plus lightweight keyword retrieval instead of silently sending the beginning of the file. The CLI splits the file into overlapping chunks, scores chunks against the user question, sends selected chunks in XML tags, and tells the user when selected chunks are being used.
+
+`analyze` remains local and deterministic: CSV analysis reports row count, columns, missing values, and insights; log analysis reports warning/error counts, repeated lines, and likely focus lines; text analysis reports themes and action-like lines. This keeps analysis useful without dumping whole files into a model.
+
+## Token Counting And Cost Safety
+
+The CLI can count OpenAI input tokens before a request is sent to the model. This uses the official `client.responses.input_tokens.count(...)` endpoint with the same prompt shape used by Responses API calls: model, instructions, input, and tools when relevant.
+
+Human-readable example:
+
+```txt
+Model: gpt-4.1-mini
+Input tokens: 14,820
+Risk: safe
+Recommendation: Okay to send.
+```
+
+JSON example:
+
+```json
+{
+  "model": "gpt-4.1-mini",
+  "input_tokens": 14820,
+  "risk_level": "safe",
+  "should_send": true,
+  "recommendation": "Okay to send.",
+  "source": {
+    "type": "file",
+    "path": "README.md"
+  }
+}
+```
+
+Risk levels:
+
+- `safe`: 25,000 input tokens or fewer. Send normally.
+- `medium`: 25,001 to 75,000 input tokens. Allowed, but worth watching.
+- `large`: 75,001 to 150,000 input tokens. The CLI blocks full sends and recommends preview or chunking.
+- `too_large`: More than 150,000 input tokens. The CLI refuses to send the full request.
+
+Token counting gives input token counts, not a final dollar cost. Output tokens are unknown until generation finishes, and current pricing is not implemented in this CLI.
+
+Images, PDFs, tool definitions, schemas, instructions, file content, and chat history can all add tokens. Future image/PDF support should count those payloads with the official endpoint too, not by guessing from file size.
+
 ## Safety
 
 - `repo-review` uses an exact allowlist: `git status --short`, `git diff --stat`, `find . -maxdepth 3 -type f`, `tree -L 3`, `uv run ruff check .`, and `uv run pytest`.
 - `repo-review` never runs arbitrary user-provided shell commands and never modifies files.
-- Large ask-file inputs are truncated to a safe preview with a warning.
+- Large ask-file inputs use retrieved chunks with a warning instead of silent truncation.
+- OpenAI-backed `ask-file`, `research`, `chat`, and JSON review/meeting workflows count tokens before generation.
+- The CLI refuses to token-count `.env` files or secret environment files.
 - Local chat sessions are stored under `.cli_tool/`, which is ignored by Git.
 - The CLI never prints API keys.
 
-## Known Limitations
+## Remaining Boundaries
 
-- `research` does not use live web search yet. Its answers are model-generated and not freshly verified.
-- JSON mode validates that the model returned parseable JSON with required top-level keys, but it does not yet enforce a full schema for every field.
-- Large files use preview truncation instead of chunking, embeddings, or full RAG.
-- No dedicated type checker is configured yet; development checks currently use Ruff and pytest.
+- Live web research is implemented for the OpenAI provider. Anthropic research uses the labeled model-only fallback.
+- Local retrieval is keyword-based, not embeddings-based. The code is structured so embeddings can be added later.
+- Token counting requires an OpenAI API key and reports input tokens only, not total cost.
+- Anthropic-backed requests do not use the OpenAI token counting endpoint.
+- PDF and image inputs are not implemented yet.
 
 ## Development
 
@@ -205,11 +309,19 @@ Test:
 uv run pytest
 ```
 
+Type check:
+
+```bash
+uv run mypy src tests
+```
+
 Run all checks:
 
 ```bash
 just check
 ```
+
+`just check` runs formatting in check mode, Ruff linting, mypy, and pytest.
 
 ## Secrets
 

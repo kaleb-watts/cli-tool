@@ -4,8 +4,9 @@ import typer
 
 from cli_tool import providers
 from cli_tool.core.errors import exit_with_error
-from cli_tool.core.output import print_panel, print_success
-from cli_tool.core.sessions import append_message, load_session, save_session
+from cli_tool.core.output import console, print_panel, print_success
+from cli_tool.core.sessions import append_message, compact_session, load_session, save_session
+from cli_tool.core.token_counter import count_prompt_tokens, require_sendable
 from cli_tool.prompts.workflows import build_chat_prompt
 
 
@@ -38,6 +39,17 @@ def chat(
                 return
 
             prompt = build_chat_prompt(session.messages, message)
+            if provider == providers.Provider.OPENAI:
+                token_result = count_prompt_tokens(prompt, model=model)
+                if not token_result.should_send and compact_session(session):
+                    save_session(session)
+                    console.print(
+                        "[yellow]Token check:[/yellow] Chat history was compacted "
+                        "before sending this turn."
+                    )
+                    prompt = build_chat_prompt(session.messages, message)
+                    token_result = count_prompt_tokens(prompt, model=model)
+                require_sendable(token_result)
             answer = providers.generate_text(prompt, provider, model=model)
             append_message(session, "user", message)
             append_message(session, "assistant", answer)

@@ -8,6 +8,8 @@ from cli_tool.commands.meeting import meeting
 from cli_tool.commands.repo_review import repo_review
 from cli_tool.commands.research import research
 from cli_tool.commands.review import review
+from cli_tool.commands.tokens import tokens
+from cli_tool.commands.tokens_chat import tokens_chat
 
 app = typer.Typer(help="CLI Tool: simple AI CLI for emails, code reviews, and meeting summaries.")
 
@@ -19,6 +21,8 @@ app.command("ask-file")(ask_file)
 app.command("analyze")(analyze)
 app.command("repo-review")(repo_review)
 app.command("chat")(chat)
+app.command("tokens")(tokens)
+app.command("tokens-chat")(tokens_chat)
 
 
 if __name__ == "__main__":

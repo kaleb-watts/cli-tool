@@ -3,10 +3,14 @@ import json
 import pytest
 
 from cli_tool.core.analysis import analyze_path
-from cli_tool.core.json_output import load_json_object, require_keys
+from cli_tool.core.chunking import chunk_text
+from cli_tool.core.json_output import load_json_model_with_repair, load_json_object, require_keys
 from cli_tool.core.repo_review import run_safe_command
+from cli_tool.core.retrieval import select_relevant_chunks
 from cli_tool.core.sessions import ChatSession, append_message, load_session, save_session
+from cli_tool.core.token_policy import TokenRiskLevel, evaluate_token_policy
 from cli_tool.prompts.workflows import build_ask_file_prompt
+from cli_tool.schemas.review import CodeReview
 
 
 def test_load_json_object_accepts_plain_json():
@@ -59,3 +63,42 @@ def test_chat_session_history_is_written_and_loaded(tmp_path):
         {"role": "assistant", "content": "hi"},
     ]
     assert json.loads(session_path.read_text(encoding="utf-8"))["updated_at"]
+
+
+def test_token_policy_risk_levels():
+    assert evaluate_token_policy("model", 25_000).risk_level == TokenRiskLevel.SAFE
+    assert evaluate_token_policy("model", 25_001).risk_level == TokenRiskLevel.MEDIUM
+    assert evaluate_token_policy("model", 75_001).risk_level == TokenRiskLevel.LARGE
+    assert evaluate_token_policy("model", 150_001).risk_level == TokenRiskLevel.TOO_LARGE
+
+
+def test_large_token_policy_blocks_sending():
+    result = evaluate_token_policy("model", 75_001)
+
+    assert result.should_send is False
+    assert "preview" in result.recommendation
+
+
+def test_chunking_creates_overlapping_chunks():
+    chunks = chunk_text("abcdef" * 1000, chunk_size=100, overlap=10)
+
+    assert len(chunks) > 1
+    assert chunks[0].text[-10:] == chunks[1].text[:10]
+
+
+def test_retrieval_ranks_relevant_chunks():
+    text = ("alpha setup details\n" * 300) + ("billing payment invoice\n" * 20)
+
+    chunks = select_relevant_chunks(text, "billing invoice", chunk_size=200, overlap=20)
+
+    assert "billing payment invoice" in chunks[0].text
+
+
+def test_invalid_json_triggers_repair():
+    result = load_json_model_with_repair(
+        '{"issues": [{"severity": "nonsense"}]}',
+        CodeReview,
+        lambda _error: '{"issues": []}',
+    )
+
+    assert result.issues == []

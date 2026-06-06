@@ -21,7 +21,9 @@ def run_anthropic(prompt: str, model: str | None = None) -> str:
 
     for block in response.content:
         if getattr(block, "type", None) == "text":
-            text_parts.append(block.text)
+            text = getattr(block, "text", None)
+            if isinstance(text, str):
+                text_parts.append(text)
 
     return "\n".join(text_parts)
 
@@ -44,6 +46,8 @@ def ask_anthropic(instructions: str, input_text: str, model: str | None = None) 
     text_parts = []
     for block in response.content:
         if getattr(block, "type", None) == "text":
-            text_parts.append(block.text)
+            text = getattr(block, "text", None)
+            if isinstance(text, str):
+                text_parts.append(text)
 
     return "\n".join(text_parts)

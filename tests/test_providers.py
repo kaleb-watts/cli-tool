@@ -73,6 +73,44 @@ def test_ask_model_separates_instructions_and_input(monkeypatch):
     ]
 
 
+def test_count_input_tokens_uses_official_endpoint(monkeypatch):
+    calls = []
+
+    class FakeInputTokens:
+        def count(self, **kwargs):
+            calls.append(kwargs)
+            return SimpleNamespace(input_tokens=123)
+
+    class FakeResponses:
+        def __init__(self):
+            self.input_tokens = FakeInputTokens()
+
+    class FakeOpenAI:
+        def __init__(self, api_key: str):
+            self.api_key = api_key
+            self.responses = FakeResponses()
+
+    monkeypatch.setattr(openai_client, "OpenAI", FakeOpenAI)
+    monkeypatch.setattr(openai_client, "get_openai_api_key", lambda: "test-openai-key")
+
+    result = openai_client.count_input_tokens(
+        model="test-model",
+        instructions="Rules",
+        input_text="<file>content</file>",
+        tools=[{"type": "web_search_preview"}],
+    )
+
+    assert result == 123
+    assert calls == [
+        {
+            "model": "test-model",
+            "instructions": "Rules",
+            "input": "<file>content</file>",
+            "tools": [{"type": "web_search_preview"}],
+        }
+    ]
+
+
 def test_run_anthropic_uses_messages_api_and_joins_text_blocks(monkeypatch):
     calls = []
 
